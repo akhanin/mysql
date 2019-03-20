@@ -1,0 +1,46 @@
+SET @abc := NULL;
+SET @FromDate='2019-03-10',@ToDate='2019-03-16';
+SET @@group_concat_max_len = 50000;
+
+CREATE TEMPORARY TABLE IF NOT EXISTS OpCat
+SELECT 
+t1.OperatoryNum,
+t1.OpName AS 'ClinicOpName',
+(CASE WHEN t1.OpName LIKE '%HYG%' THEN 'Hygiene'
+		WHEN t1.OpName LIKE '%OB%' THEN 'Hygiene'
+		WHEN t1.OpName LIKE '%OPEN%' THEN 'Hygiene' 
+	   WHEN t1.OpName LIKE '%OPER%' THEN 'Operatory'
+	   WHEN t1.OpName LIKE '%SEAL%' THEN 'Hygiene'
+	   WHEN t1.OpName LIKE '%PANO%' THEN 'Hygiene'
+	   WHEN t1.OpName LIKE '%Atten%' THEN 'Attention'
+	   WHEN t1.OpName LIKE '%Consult%' THEN 'Hygiene'
+		ELSE t1.OpName END) AS 'OpType'
+FROM operatory t1;
+
+SELECT
+GROUP_CONCAT(DISTINCT
+	CONCAT(' SUM(CASE WHEN OpType=''', OpType, ''' THEN 1 ELSE 0 END) AS ''', OpType, '''')
+	) INTO @Ops
+FROM OpCat;
+
+SET @abc := 
+CONCAT(
+'SELECT
+DATE(a.AptDateTime) AS `Date`,
+DAYNAME(a.AptDateTime) AS `DayOfWeek`,
+ ', @Ops, ' , 
+count(a.AptNum) AS `Total`,
+(SELECT ValueString FROM preference WHERE prefName LIKE "ClinicName") AS `Clinic`,
+"Completed Visits" AS `Metric`
+FROM appointment a
+JOIN OpCat o ON o.OperatoryNum=a.Op
+WHERE DATE(a.AptDateTime) BETWEEN @FromDate AND @ToDate
+AND a.AptStatus=2
+GROUP BY Date'
+);
+
+PREPARE stmt FROM @abc;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+DROP TEMPORARY TABLE IF EXISTS OpCat;
